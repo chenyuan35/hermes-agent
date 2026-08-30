@@ -135,6 +135,8 @@ hermes completion bash|zsh|fish
 hermes update / uninstall / claw migrate
 ```
 
+> **Credential-output warning:** an unpatched Hermes v0.20.6 could print a full provider API key from `hermes memory status`/`hermes honcho status`. This local build recursively redacts provider status fields to `<redacted>` and has a regression test. Treat output from unknown/older builds as sensitive; use provider tools or a Python redacted read when in doubt.
+
 Plugin- and provider-supplied subcommands (e.g. `hermes photon setup`) only appear once their plugin is installed/active.
 
 ### Where to Find Things

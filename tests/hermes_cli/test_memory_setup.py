@@ -121,3 +121,58 @@ def test_cmd_status_memory_tool_gate_enabled(capsys, monkeypatch):
     assert "Memory tool:        enabled ✓" in captured
     assert "Memory injection:   enabled ✓" in captured
     assert "User profile:       disabled ✗" in captured
+
+
+def test_cmd_status_redacts_provider_secret_fields(capsys, monkeypatch):
+    """Memory provider status must never print provider credentials."""
+
+    class Provider:
+        def is_available(self):
+            return True
+
+    secret = "hch-v3-super-secret-value"
+    nested_secret = "nested-token-value"
+    generic_key = "generic-provider-key"
+    bearer_jwt = "header.payload.signature"
+    _cfg = {
+        "memory": {
+            "provider": "honcho",
+            "memory_enabled": True,
+            "user_profile_enabled": True,
+            "honcho": {
+                "api_key": secret,
+                "environment": "production",
+                "nested": {
+                    "token": nested_secret,
+                    "key": generic_key,
+                    "jwt": bearer_jwt,
+                    "mode": "tools",
+                    "token_budget": 1200,
+                },
+            },
+        }
+    }
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: _cfg)
+    monkeypatch.setattr(
+        "hermes_cli.config.load_config_readonly", lambda: _cfg, raising=False
+    )
+    monkeypatch.setattr(
+        memory_setup,
+        "_get_available_providers",
+        lambda: [("honcho", "cloud", Provider())],
+    )
+
+    memory_setup.cmd_status(SimpleNamespace())
+
+    captured = capsys.readouterr().out
+    assert secret not in captured
+    assert nested_secret not in captured
+    assert generic_key not in captured
+    assert bearer_jwt not in captured
+    assert "api_key: <redacted>" in captured
+    assert "environment: production" in captured
+    assert "'token': '<redacted>'" in captured
+    assert "'key': '<redacted>'" in captured
+    assert "'jwt': '<redacted>'" in captured
+    assert "'mode': 'tools'" in captured
+    assert "'token_budget': 1200" in captured

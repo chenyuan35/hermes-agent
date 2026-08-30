@@ -475,6 +475,56 @@ def _write_env_vars(
 # Status
 # ---------------------------------------------------------------------------
 
+_STATUS_SAFE_SECRET_SUFFIXES = (
+    "_present",
+    "_configured",
+    "_enabled",
+    "_length",
+    "_fingerprint",
+    "_sha256",
+    "_source",
+    "_env",
+    "_path",
+    "_name",
+    "_count",
+    "_limit",
+    "_budget",
+)
+_STATUS_SECRET_KEY_RE = re.compile(
+    r"(?:^|_)(?:key|api_?key|apikey|token|secret|password|passwd|credentials?|"
+    r"private_key|access_key|authorization|bearer|jwt|cookie)(?:$|_)",
+    re.IGNORECASE,
+)
+
+
+def _status_key_is_secret(key: object) -> bool:
+    """Return True for credential-bearing status field names."""
+    text = re.sub(r"(?<!^)(?=[A-Z])", "_", str(key or "")).replace("-", "_").lower()
+    if text.endswith(_STATUS_SAFE_SECRET_SUFFIXES):
+        return False
+    return bool(_STATUS_SECRET_KEY_RE.search(text))
+
+
+def _redact_status_config(value, *, key: object = ""):
+    """Recursively redact provider status payloads before terminal output."""
+    if _status_key_is_secret(key):
+        return "<redacted>" if value not in (None, "") else value
+    if isinstance(value, dict):
+        return {item_key: _redact_status_config(item_value, key=item_key)
+                for item_key, item_value in value.items()}
+    if isinstance(value, list):
+        return [_redact_status_config(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_status_config(item) for item in value)
+    if isinstance(value, str):
+        try:
+            from agent.redact import redact_sensitive_text
+            return redact_sensitive_text(value, force=True)
+        except Exception:
+            return value
+    return value
+
+
 def cmd_status(args) -> None:
     """Show current memory provider config."""
     from hermes_cli.config import load_config
@@ -523,6 +573,7 @@ def cmd_status(args) -> None:
                     display_config["status_config_error"] = str(e)
 
         if display_config:
+            display_config = _redact_status_config(display_config)
             print(f"\n  {provider_name} config:")
             for key, val in display_config.items():
                 print(f"    {key}: {val}")
