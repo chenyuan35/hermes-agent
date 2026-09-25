@@ -136,6 +136,31 @@ def pending_count(subsystem: str) -> int:
     return 0
 
 
+def approve_pending(subsystem: str, pending_id: str) -> Dict[str, Any]:
+    """Approve a pending memory write: apply it to the real store, then discard the record.
+    Returns a dict with 'success' and optional 'error'."""
+    record = get_pending(subsystem, pending_id)
+    if not record:
+        return {"success": False, "error": f"Pending record {pending_id} not found."}
+
+    payload = record.get("payload") or {}
+    if subsystem == MEMORY:
+        try:
+            from tools.memory_tool import load_on_disk_store, apply_memory_pending
+        except Exception as e:
+            return {"success": False, "error": f"Failed to import memory tool: {e}"}
+        store = load_on_disk_store()
+        result = apply_memory_pending(payload, store)
+        if not result.get("success"):
+            return {"success": False, "error": result.get("error", "Unknown error applying memory write.")}
+        # apply_memory_pending already persists via _mutate; no extra save needed
+    else:
+        return {"success": False, "error": f"Unsupported subsystem: {subsystem}"}
+
+    discard_pending(subsystem, pending_id)
+    return {"success": True}
+
+
 # --- Write origin ---
 
 def current_origin() -> str:
